@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show *)",
+      "Bash(pip list *)",
+      "Bash(python -c \"import backend; print\\('OK:', backend.__file__\\)\")",
+      "Bash(awk '{print $2}')",
+      "Bash(xargs kill -9)",
+      "Bash(uvicorn app.main:app --host 0.0.0.0 --port 8000)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(curl -s http://localhost:8000/api/documents/count)",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import socket; s=socket.socket\\(\\); s.settimeout\\(2\\); print\\('端口占用' if s.connect_ex\\(\\('127.0.0.1',8000\\)\\)==0 else '端口空闲'\\); s.close\\(\\)\")",
+      "Bash(taskkill /F /PID 87)",
+      "Bash(taskkill /F /PID 152)",
+      "Bash(lsof -i :8000)",
+      "Bash(uvicorn app.main:app --host 0.0.0.0 --port 8002)",
+      "Bash(curl -s http://localhost:8002/api/documents/count)"
+    ]
+  }
+}
