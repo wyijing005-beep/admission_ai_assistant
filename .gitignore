@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.idea/
+.env
+backend/data/vector_store/
+backend/data/uploads/
