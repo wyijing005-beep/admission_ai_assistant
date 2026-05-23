@@ -34,16 +34,30 @@ def _load_sources():
         loaded = json.loads(manifest_path.read_text("utf-8"))
 
     # 收集所有文本文件
-    extensions = ("*.txt", "*.md", "*.json", "*.csv", "*.yaml", "*.yml")
+    text_extensions = ("*.txt", "*.md", "*.json", "*.csv", "*.yaml", "*.yml")
+    pdf_extensions = ("*.pdf",)
     txt_files = []
-    for ext in extensions:
+    for ext in text_extensions:
         txt_files.extend(sources_dir.rglob(ext))
-    txt_files.sort()
-    if not txt_files:
+    pdf_files = []
+    for ext in pdf_extensions:
+        pdf_files.extend(sources_dir.rglob(ext))
+    all_files = sorted(txt_files + pdf_files)
+    if not all_files:
         return
 
+    def _read_pdf(file_path: Path) -> str:
+        from pypdf import PdfReader
+        reader = PdfReader(str(file_path))
+        parts = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                parts.append(text)
+        return "\n".join(parts)
+
     new_count = 0
-    for file_path in txt_files:
+    for file_path in all_files:
         rel_path = str(file_path.relative_to(sources_dir))
         mtime = os.path.getmtime(file_path)
 
@@ -51,15 +65,22 @@ def _load_sources():
         if rel_path in loaded and loaded[rel_path] == mtime:
             continue
 
-        # 读取文件内容
-        for encoding in ["utf-8", "gbk", "gb2312"]:
+        if file_path.suffix.lower() == ".pdf":
             try:
-                text = file_path.read_text(encoding)
-                break
-            except (UnicodeDecodeError, UnicodeError):
+                text = _read_pdf(file_path)
+            except Exception:
+                continue
+            if not text.strip():
                 continue
         else:
-            continue  # 所有编码都失败就跳过
+            for encoding in ["utf-8", "gbk", "gb2312"]:
+                try:
+                    text = file_path.read_text(encoding)
+                    break
+                except (UnicodeDecodeError, UnicodeError):
+                    continue
+            else:
+                continue  # 所有编码都失败就跳过
 
         documents = chunker.chunk_document(text, metadata={"source": rel_path})
         embedding_store.add_documents(documents)
