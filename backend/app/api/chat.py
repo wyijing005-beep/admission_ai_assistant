@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from app.models.schemas import ChatRequest, ChatResponse
 from app.rag import embedding_store, llm
 
@@ -6,9 +6,14 @@ router = APIRouter()
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
+):
     try:
-        relevant_docs = embedding_store.search(request.question, top_k=5)
+        relevant_docs = embedding_store.search(
+            request.question, top_k=5, session_id=x_session_id,
+        )
 
         context = "\n\n".join(
             [doc["content"] for doc in relevant_docs]

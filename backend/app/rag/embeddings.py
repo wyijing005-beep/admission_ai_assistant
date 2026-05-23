@@ -28,13 +28,15 @@ class EmbeddingStore:
     def embed(self, texts: list[str]) -> np.ndarray:
         return self.model.encode(texts, normalize_embeddings=True)
 
-    def add_documents(self, documents: list[dict]) -> int:
+    def add_documents(self, documents: list[dict], session_id: str | None = None) -> int:
         texts = [doc["content"] for doc in documents]
         new_embeddings = self.embed(texts)
 
         start_idx = len(self.documents)
         for i, doc in enumerate(documents):
             doc["id"] = start_idx + i
+            doc.setdefault("metadata", {})
+            doc["metadata"]["session_id"] = session_id
         self.documents.extend(documents)
 
         if self.embeddings is None:
@@ -45,22 +47,32 @@ class EmbeddingStore:
         self._save()
         return len(documents)
 
-    def search(self, query: str, top_k: int = 5) -> list[dict]:
+    def search(self, query: str, top_k: int = 5, session_id: str | None = None) -> list[dict]:
         if not self.documents or self.embeddings is None:
             return []
 
         query_emb = self.embed([query])
         scores = np.dot(self.embeddings, query_emb.T).flatten()
-        top_indices = np.argsort(scores)[::-1][:top_k]
+
+        # 多取一些候选，过滤后再截断
+        fetch_k = min(top_k * 5, len(self.documents))
+        top_indices = np.argsort(scores)[::-1][:fetch_k]
 
         results = []
         for idx in top_indices:
+            doc = self.documents[idx]
+            doc_session = doc.get("metadata", {}).get("session_id")
+            # session_id 为 None 的是公共文档，所有人可见
+            if doc_session is not None and doc_session != session_id:
+                continue
             if scores[idx] > 0.3:
                 results.append({
-                    "content": self.documents[idx]["content"],
-                    "metadata": self.documents[idx].get("metadata", {}),
+                    "content": doc["content"],
+                    "metadata": doc.get("metadata", {}),
                     "score": float(scores[idx]),
                 })
+                if len(results) >= top_k:
+                    break
         return results
 
     def _save(self):
@@ -81,6 +93,14 @@ class EmbeddingStore:
             with open(doc_path, "rb") as f:
                 self.documents = pickle.load(f)
             self.embeddings = np.load(emb_path)
+
+    def get_document_count(self, session_id: str | None = None) -> int:
+        if session_id is None:
+            return len(self.documents)
+        return sum(
+            1 for d in self.documents
+            if d.get("metadata", {}).get("session_id") == session_id
+        )
 
     @property
     def document_count(self) -> int:

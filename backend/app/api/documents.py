@@ -1,7 +1,7 @@
 import os
 import io
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, Header
 from app.models.schemas import DocumentUploadResponse
 from app.rag import embedding_store, chunker
 from app.core.config import settings
@@ -22,7 +22,10 @@ def _parse_pdf(file_bytes: bytes) -> str:
 
 
 @router.post("/documents/upload", response_model=DocumentUploadResponse)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(
+    file: UploadFile = File(...),
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
+):
     content = await file.read()
 
     filename_lower = file.filename.lower()
@@ -62,7 +65,7 @@ async def upload_document(file: UploadFile = File(...)):
     (upload_dir / file.filename).write_bytes(content)
 
     documents = chunker.chunk_document(text, metadata={"source": file.filename})
-    count = embedding_store.add_documents(documents)
+    count = embedding_store.add_documents(documents, session_id=x_session_id)
 
     return DocumentUploadResponse(
         filename=file.filename,
@@ -72,5 +75,7 @@ async def upload_document(file: UploadFile = File(...)):
 
 
 @router.get("/documents/count")
-async def document_count():
-    return {"count": embedding_store.document_count}
+async def document_count(
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
+):
+    return {"count": embedding_store.get_document_count(session_id=x_session_id)}

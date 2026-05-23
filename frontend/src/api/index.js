@@ -1,8 +1,24 @@
 import axios from 'axios'
 
+const SESSION_KEY = 'rag_session_id'
+
+function getSessionId() {
+  let id = localStorage.getItem(SESSION_KEY)
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem(SESSION_KEY, id)
+  }
+  return id
+}
+
 const api = axios.create({
   baseURL: '/api',
   timeout: 60000,
+})
+
+api.interceptors.request.use((config) => {
+  config.headers['X-Session-ID'] = getSessionId()
+  return config
 })
 
 export async function sendChat(question, history = []) {
