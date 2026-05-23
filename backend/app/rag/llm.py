@@ -44,7 +44,7 @@ class DeepSeekLLM:
             response = self.client.chat.completions.create(
                 model="deepseek-chat",
                 messages=messages,
-                temperature=0.7,
+                temperature=0.5,
                 max_tokens=2048,
             )
             return {
