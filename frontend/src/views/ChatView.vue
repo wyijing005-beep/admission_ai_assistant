@@ -1,11 +1,14 @@
 <script setup>
 import { ref, nextTick, watch } from 'vue'
-import { sendChat } from '../api'
+import { sendChat, getConversation } from '../api'
+import ConversationSidebar from '../components/ConversationSidebar.vue'
 
 const messages = ref([])
 const input = ref('')
 const loading = ref(false)
 const chatBox = ref(null)
+const conversationId = ref(null)
+const sidebarRef = ref(null)
 
 async function handleSend() {
   const text = input.value.trim()
@@ -16,12 +19,12 @@ async function handleSend() {
   loading.value = true
 
   try {
-    const history = messages.value.map(m => ({
-      role: m.role,
-      content: m.content,
-    }))
+    const res = await sendChat(text, conversationId.value)
 
-    const res = await sendChat(text, history.slice(-10))
+    if (!conversationId.value) {
+      conversationId.value = res.conversation_id
+      sidebarRef.value?.loadList()
+    }
 
     messages.value.push({
       role: 'assistant',
@@ -36,6 +39,28 @@ async function handleSend() {
   } finally {
     loading.value = false
   }
+}
+
+async function selectConversation(id) {
+  conversationId.value = id
+  loading.value = true
+  try {
+    const data = await getConversation(id)
+    messages.value = data.messages.map(m => ({
+      role: m.role,
+      content: m.content,
+      sources: m.sources || [],
+    }))
+  } catch {
+    messages.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+function newConversation() {
+  conversationId.value = null
+  messages.value = []
 }
 
 function handleKeydown(e) {
@@ -58,139 +83,149 @@ watch(messages, async () => {
 </script>
 
 <template>
-  <div class="chat-root">
-    <div class="chat-scroll" ref="chatBox">
-      <!-- Welcome -->
-      <div v-if="messages.length === 0" class="welcome-screen">
-        <div class="welcome-hero">
-          <div class="hero-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <div class="chat-layout">
+    <ConversationSidebar
+      ref="sidebarRef"
+      :activeId="conversationId"
+      @select-conversation="selectConversation"
+      @new-conversation="newConversation"
+    />
+    <div class="chat-root">
+      <div class="chat-scroll" ref="chatBox">
+        <div v-if="messages.length === 0" class="welcome-screen">
+          <div class="welcome-hero">
+            <div class="hero-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z"/>
+                <circle cx="12" cy="14" r="1.2"/>
+                <path d="M10 17h4"/>
+              </svg>
+            </div>
+            <h1 class="hero-title">你好，我是校园 AI 助手</h1>
+            <p class="hero-desc">
+              基于校内招生政策、专业介绍、历年录取数据，<br/>帮你解答志愿填报中的疑问
+            </p>
+          </div>
+          <div class="suggestion-strip">
+            <button
+              v-for="s in ['计算机专业有什么要求？', '今年招生政策有哪些变化？', '我考了580分能上什么专业？']"
+              :key="s"
+              @click="selectSuggestion(s)"
+              class="suggestion-chip"
+            >
+              {{ s }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="messages.length > 0" class="msg-list">
+          <div
+            v-for="(msg, i) in messages"
+            :key="i"
+            :class="['msg-row', msg.role]"
+          >
+            <div class="msg-avatar">
+              <template v-if="msg.role === 'user'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              </template>
+              <template v-else>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z"/>
+                </svg>
+              </template>
+            </div>
+            <div class="msg-body">
+              <div class="msg-label">{{ msg.role === 'user' ? '你' : 'AI 助手' }}</div>
+              <div class="msg-bubble">
+                <div class="msg-text" v-html="msg.content.replace(/\n/g, '<br>')"></div>
+              </div>
+              <div v-if="msg.sources && msg.sources.length" class="msg-sources">
+                <details>
+                  <summary>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="src-icon">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    参考来源 ({{ msg.sources.length }})
+                  </summary>
+                  <div class="src-list">
+                    <div v-for="(src, j) in msg.sources" :key="j" class="src-item">
+                      <span class="src-score">{{ (src.score * 100).toFixed(0) }}%</span>
+                      <span class="src-snippet">{{ src.content }}</span>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="loading" class="msg-row assistant">
+          <div class="msg-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z"/>
-              <circle cx="12" cy="14" r="1.2"/>
-              <path d="M10 17h4"/>
             </svg>
           </div>
-          <h1 class="hero-title">你好，我是校园 AI 助手</h1>
-          <p class="hero-desc">
-            基于校内招生政策、专业介绍、历年录取数据，<br/>帮你解答志愿填报中的疑问
-          </p>
+          <div class="msg-body">
+            <div class="msg-label">AI 助手</div>
+            <div class="msg-bubble typing-bubble">
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+            </div>
+          </div>
         </div>
-        <div class="suggestion-strip">
+      </div>
+
+      <div class="input-strip">
+        <div class="input-row">
+          <textarea
+            v-model="input"
+            placeholder="输入你的问题，按 Enter 发送…"
+            :disabled="loading"
+            @keydown="handleKeydown"
+            rows="1"
+          ></textarea>
           <button
-            v-for="s in ['计算机专业有什么要求？', '今年招生政策有哪些变化？', '我考了580分能上什么专业？']"
-            :key="s"
-            @click="selectSuggestion(s)"
-            class="suggestion-chip"
+            @click="handleSend"
+            :disabled="loading || !input.trim()"
+            class="send-btn"
+            :class="{ ready: input.trim() && !loading }"
           >
-            {{ s }}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
           </button>
         </div>
+        <p class="input-hint">回答基于校内知识库，请核对关键信息</p>
       </div>
-
-      <!-- Messages -->
-      <div v-if="messages.length > 0" class="msg-list">
-        <div
-          v-for="(msg, i) in messages"
-          :key="i"
-          :class="['msg-row', msg.role]"
-        >
-          <div class="msg-avatar">
-            <template v-if="msg.role === 'user'">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-            </template>
-            <template v-else>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z"/>
-              </svg>
-            </template>
-          </div>
-          <div class="msg-body">
-            <div class="msg-label">{{ msg.role === 'user' ? '你' : 'AI 助手' }}</div>
-            <div class="msg-bubble">
-              <div class="msg-text" v-html="msg.content.replace(/\n/g, '<br>')"></div>
-            </div>
-            <div v-if="msg.sources && msg.sources.length" class="msg-sources">
-              <details>
-                <summary>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="src-icon">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                  </svg>
-                  参考来源 ({{ msg.sources.length }})
-                </summary>
-                <div class="src-list">
-                  <div v-for="(src, j) in msg.sources" :key="j" class="src-item">
-                    <span class="src-score">{{ (src.score * 100).toFixed(0) }}%</span>
-                    <span class="src-snippet">{{ src.content }}</span>
-                  </div>
-                </div>
-              </details>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Typing -->
-      <div v-if="loading" class="msg-row assistant">
-        <div class="msg-avatar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z"/>
-          </svg>
-        </div>
-        <div class="msg-body">
-          <div class="msg-label">AI 助手</div>
-          <div class="msg-bubble typing-bubble">
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Input -->
-    <div class="input-strip">
-      <div class="input-row">
-        <textarea
-          v-model="input"
-          placeholder="输入你的问题，按 Enter 发送…"
-          :disabled="loading"
-          @keydown="handleKeydown"
-          rows="1"
-        ></textarea>
-        <button
-          @click="handleSend"
-          :disabled="loading || !input.trim()"
-          class="send-btn"
-          :class="{ ready: input.trim() && !loading }"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"/>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-        </button>
-      </div>
-      <p class="input-hint">回答基于校内知识库，请核对关键信息</p>
     </div>
   </div>
 </template>
 
 <style scoped>
+.chat-layout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
 .chat-root {
   display: flex;
   flex-direction: column;
   height: 100%;
+  flex: 1;
   max-width: 820px;
   margin: 0 auto;
   width: 100%;
 }
 
-/* ---- Scroll area ---- */
 .chat-scroll {
   flex: 1;
   overflow-y: auto;
@@ -198,7 +233,6 @@ watch(messages, async () => {
   scroll-behavior: smooth;
 }
 
-/* ---- Welcome ---- */
 .welcome-screen {
   display: flex;
   flex-direction: column;
@@ -270,7 +304,6 @@ watch(messages, async () => {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.06);
 }
 
-/* ---- Messages ---- */
 .msg-list {
   display: flex;
   flex-direction: column;
@@ -349,7 +382,6 @@ watch(messages, async () => {
   word-break: break-word;
 }
 
-/* ---- Sources ---- */
 .msg-sources {
   margin-top: 6px;
   font-size: 12px;
@@ -411,7 +443,6 @@ watch(messages, async () => {
   word-break: break-all;
 }
 
-/* ---- Typing ---- */
 .typing-bubble {
   display: flex;
   align-items: center;
@@ -435,7 +466,6 @@ watch(messages, async () => {
   30% { opacity: 1; transform: scale(1); }
 }
 
-/* ---- Input ---- */
 .input-strip {
   padding: 12px 24px 16px;
   background: linear-gradient(180deg, transparent, var(--color-bg) 40%);

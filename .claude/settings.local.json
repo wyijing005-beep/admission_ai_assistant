@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(F:/Anaconda_envs/envs/xpu-rag/python.exe -m pip install fastapi uvicorn langchain langchain-community langchain-text-splitters faiss-cpu sentence-transformers pypdf python-multipart openai python-dotenv httpx -i https://pypi.tuna.tsinghua.edu.cn/simple)",
-      "Bash(conda env *)"
-    ]
-  }
-}

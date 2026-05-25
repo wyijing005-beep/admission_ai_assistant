@@ -10,3 +10,6 @@ python-multipart
 openai
 python-dotenv
 httpx
+sqlalchemy
+pyjwt
+bcrypt

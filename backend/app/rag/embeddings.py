@@ -4,7 +4,6 @@ import numpy as np
 from typing import Optional
 from app.core.config import settings
 
-# 国内访问 HuggingFace 使用镜像，加速模型下载
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 
@@ -28,7 +27,7 @@ class EmbeddingStore:
     def embed(self, texts: list[str]) -> np.ndarray:
         return self.model.encode(texts, normalize_embeddings=True)
 
-    def add_documents(self, documents: list[dict], session_id: str | None = None) -> int:
+    def add_documents(self, documents: list[dict], user_id: int | None = None) -> int:
         texts = [doc["content"] for doc in documents]
         new_embeddings = self.embed(texts)
 
@@ -36,7 +35,7 @@ class EmbeddingStore:
         for i, doc in enumerate(documents):
             doc["id"] = start_idx + i
             doc.setdefault("metadata", {})
-            doc["metadata"]["session_id"] = session_id
+            doc["metadata"]["user_id"] = user_id
         self.documents.extend(documents)
 
         if self.embeddings is None:
@@ -47,23 +46,22 @@ class EmbeddingStore:
         self._save()
         return len(documents)
 
-    def search(self, query: str, top_k: int = 5, session_id: str | None = None) -> list[dict]:
+    def search(self, query: str, top_k: int = 5, user_id: int | None = None) -> list[dict]:
         if not self.documents or self.embeddings is None:
             return []
 
         query_emb = self.embed([query])
         scores = np.dot(self.embeddings, query_emb.T).flatten()
 
-        # 多取一些候选，过滤后再截断
         fetch_k = min(top_k * 5, len(self.documents))
         top_indices = np.argsort(scores)[::-1][:fetch_k]
 
         results = []
         for idx in top_indices:
             doc = self.documents[idx]
-            doc_session = doc.get("metadata", {}).get("session_id")
-            # session_id 为 None 的是公共文档，所有人可见
-            if doc_session is not None and doc_session != session_id:
+            doc_user = doc.get("metadata", {}).get("user_id")
+            # user_id 为 None 的是公共文档，所有人可见
+            if doc_user is not None and doc_user != user_id:
                 continue
             if scores[idx] > 0.3:
                 results.append({
@@ -94,12 +92,12 @@ class EmbeddingStore:
                 self.documents = pickle.load(f)
             self.embeddings = np.load(emb_path)
 
-    def get_document_count(self, session_id: str | None = None) -> int:
-        if session_id is None:
+    def get_document_count(self, user_id: int | None = None) -> int:
+        if user_id is None:
             return len(self.documents)
         return sum(
             1 for d in self.documents
-            if d.get("metadata", {}).get("session_id") == session_id
+            if d.get("metadata", {}).get("user_id") == user_id
         )
 
     @property

@@ -20,14 +20,19 @@ class DeepSeekLLM:
         self,
         question: str,
         context: str,
+        user_context: str = "",
         history: Optional[list[dict]] = None,
     ) -> dict:
         from openai import OpenAIError
+        from app.core.config import settings
 
         system_prompt = f"""你是一个高考志愿填报智能助手。请基于以下提供的参考信息回答问题。
 
 如果参考信息中有相关依据，请基于依据回答，并在回答中引用相关来源。
 如果参考信息不足以回答问题，请诚实告知。
+
+用户个人信息：
+{user_context}
 
 参考信息：
 {context}
@@ -42,7 +47,7 @@ class DeepSeekLLM:
 
         try:
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=settings.deepseek_model,
                 messages=messages,
                 temperature=0.5,
                 max_tokens=2048,

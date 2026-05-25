@@ -4,7 +4,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api import chat, documents, search
+from app.core.database import engine, Base
+from app.api import chat, documents, search, auth, user, conversations
 from app.rag import embedding_store, chunker
 
 app = FastAPI(title=settings.app_name, version="1.0.0")
@@ -20,10 +21,12 @@ app.add_middleware(
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
 app.include_router(documents.router, prefix="/api", tags=["Documents"])
 app.include_router(search.router, prefix="/api", tags=["Search"])
+app.include_router(auth.router, prefix="/api", tags=["Auth"])
+app.include_router(user.router, prefix="/api", tags=["User"])
+app.include_router(conversations.router, prefix="/api", tags=["Conversations"])
 
 
 def _load_sources():
-    """启动时自动加载 sources/ 下的所有 .txt 文件到向量库"""
     sources_dir = Path(settings.sources_path)
     if not sources_dir.exists():
         return
@@ -33,7 +36,6 @@ def _load_sources():
     if manifest_path.exists():
         loaded = json.loads(manifest_path.read_text("utf-8"))
 
-    # 收集所有文本文件
     text_extensions = ("*.txt", "*.md", "*.json", "*.csv", "*.yaml", "*.yml")
     pdf_extensions = ("*.pdf",)
     txt_files = []
@@ -61,7 +63,6 @@ def _load_sources():
         rel_path = str(file_path.relative_to(sources_dir))
         mtime = os.path.getmtime(file_path)
 
-        # 已加载且未修改则跳过
         if rel_path in loaded and loaded[rel_path] == mtime:
             continue
 
@@ -80,7 +81,7 @@ def _load_sources():
                 except (UnicodeDecodeError, UnicodeError):
                     continue
             else:
-                continue  # 所有编码都失败就跳过
+                continue
 
         documents = chunker.chunk_document(text, metadata={"source": rel_path})
         embedding_store.add_documents(documents)
@@ -94,6 +95,8 @@ def _load_sources():
 
 @app.on_event("startup")
 async def startup():
+    import app.models.user
+    Base.metadata.create_all(bind=engine)
     _load_sources()
 
 

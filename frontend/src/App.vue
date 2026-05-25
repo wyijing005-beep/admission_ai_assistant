@@ -1,8 +1,14 @@
 <script setup>
 import { useRouter, useRoute } from 'vue-router'
+import { isLoggedIn, logout } from './api'
 
 const router = useRouter()
 const route = useRoute()
+
+function handleLogout() {
+  logout()
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -33,6 +39,16 @@ const route = useRoute()
             知识库
           </router-link>
         </nav>
+        <div v-if="isLoggedIn()" class="user-menu">
+          <router-link to="/profile" :class="['nav-pill', { active: route.path === '/profile' }]">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            个人信息
+          </router-link>
+          <button class="logout-btn" @click="handleLogout">退出</button>
+        </div>
       </div>
     </header>
     <main class="main-stage">
@@ -183,6 +199,30 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logout-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.logout-btn:hover {
+  border-color: #dc2626;
+  color: #dc2626;
 }
 
 /* ---- Page transition ---- */

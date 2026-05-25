@@ -34,5 +34,16 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # Database
+    database_url: str = os.getenv(
+        "DATABASE_URL",
+        f"sqlite:///{os.path.join(_base_dir, 'data', 'app.db')}",
+    )
+
+    # JWT
+    jwt_secret: str = os.getenv("JWT_SECRET", "local-rag-dev-secret-change-in-production")
+    jwt_algorithm: str = "HS256"
+    jwt_expire_hours: int = 72
+
 
 settings = Settings()

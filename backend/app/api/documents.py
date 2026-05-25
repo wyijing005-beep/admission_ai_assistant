@@ -1,16 +1,20 @@
 import os
 import io
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Header
+from fastapi import APIRouter, UploadFile, File, Depends
+from sqlalchemy.orm import Session
+
 from app.models.schemas import DocumentUploadResponse
+from app.models.user import User
 from app.rag import embedding_store, chunker
 from app.core.config import settings
+from app.core.database import get_db
+from app.api.auth import get_current_user
 
 router = APIRouter()
 
 
 def _parse_pdf(file_bytes: bytes) -> str:
-    """从 PDF 二进制数据中提取文本"""
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(file_bytes))
     parts = []
@@ -22,11 +26,12 @@ def _parse_pdf(file_bytes: bytes) -> str:
 
 
 @router.post("/documents/upload", response_model=DocumentUploadResponse)
-async def upload_document(
+def upload_document(
     file: UploadFile = File(...),
-    x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    content = await file.read()
+    content = file.read()
 
     filename_lower = file.filename.lower()
     if filename_lower.endswith(".pdf"):
@@ -45,7 +50,6 @@ async def upload_document(
                 status="pdf_empty",
             )
     else:
-        # 解析纯文本文件（自动检测编码）
         for encoding in ["utf-8", "gbk", "gb2312"]:
             try:
                 text = content.decode(encoding)
@@ -59,13 +63,12 @@ async def upload_document(
                 status="encoding_error",
             )
 
-    # 保存原文件到 uploads/
     upload_dir = Path(settings.upload_path)
     upload_dir.mkdir(parents=True, exist_ok=True)
     (upload_dir / file.filename).write_bytes(content)
 
     documents = chunker.chunk_document(text, metadata={"source": file.filename})
-    count = embedding_store.add_documents(documents, session_id=x_session_id)
+    count = embedding_store.add_documents(documents, user_id=current_user.id)
 
     return DocumentUploadResponse(
         filename=file.filename,
@@ -75,7 +78,7 @@ async def upload_document(
 
 
 @router.get("/documents/count")
-async def document_count(
-    x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
+def document_count(
+    current_user: User = Depends(get_current_user),
 ):
-    return {"count": embedding_store.get_document_count(session_id=x_session_id)}
+    return {"count": embedding_store.get_document_count(user_id=current_user.id)}
